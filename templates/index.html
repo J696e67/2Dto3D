@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sketch2stl — Draw &amp; Convert to 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #1a1a2e; color: #e0e0e0;
+    min-height: 100vh;
+  }
+  header {
+    background: #16213e; padding: 12px 24px;
+    border-bottom: 1px solid #0f3460;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.3rem; color: #e94560; }
+  header span { font-size: 0.85rem; color: #888; }
+
+  .main { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+
+  /* --- Canvas area --- */
+  .canvas-area { flex: 1; min-width: 500px; }
+  .toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .toolbar button, .toolbar label {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-size: 0.82rem; transition: background 0.15s;
+  }
+  .toolbar button:hover { background: #1a4a80; }
+  .toolbar button.active { background: #e94560; border-color: #e94560; }
+  .toolbar input[type="range"] { width: 80px; vertical-align: middle; }
+  .toolbar .sep { width: 1px; height: 24px; background: #333; }
+  .toolbar input[type="file"] { display: none; }
+
+  canvas#drawCanvas {
+    border: 2px solid #0f3460; border-radius: 8px;
+    cursor: crosshair; display: block;
+    background: #fff; touch-action: none;
+    max-width: 100%;
+  }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    width: 260px; background: #16213e; border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    border: 1px solid #0f3460;
+  }
+  .sidebar h3 { font-size: 0.95rem; color: #e94560; margin-bottom: 4px; }
+  .param { display: flex; flex-direction: column; gap: 2px; }
+  .param label {
+    font-size: 0.78rem; color: #aaa;
+    display: flex; justify-content: space-between;
+  }
+  .param label span { color: #e94560; font-weight: 600; }
+  .param input[type="range"], .param select {
+    width: 100%; accent-color: #e94560;
+  }
+  .param select {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 4px; border-radius: 4px;
+  }
+
+  .checkbox-param {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.82rem; color: #aaa;
+  }
+  .checkbox-param input { accent-color: #e94560; }
+
+  #convertBtn {
+    background: #e94560; color: #fff; border: none;
+    padding: 12px; border-radius: 8px; font-size: 1rem;
+    cursor: pointer; font-weight: 600; transition: background 0.15s;
+  }
+  #convertBtn:hover { background: #c73650; }
+  #convertBtn:disabled { background: #555; cursor: wait; }
+
+  #downloadBtn {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 10px; border-radius: 8px; font-size: 0.9rem;
+    cursor: pointer; text-align: center; display: none;
+    text-decoration: none; font-weight: 500;
+  }
+  #downloadBtn:hover { background: #1a4a80; }
+
+  #statusMsg {
+    font-size: 0.82rem; color: #aaa; min-height: 1.2em;
+  }
+  #statusMsg.error { color: #e94560; }
+  #statusMsg.warning {
+    color: #f0a500; background: rgba(240,165,0,0.1);
+    border: 1px solid rgba(240,165,0,0.3); border-radius: 6px;
+    padding: 8px; line-height: 1.4;
+  }
+
+  /* --- 3D Preview --- */
+  .preview-section {
+    width: 100%; padding: 0 16px 16px;
+  }
+  .preview-section h3 {
+    font-size: 0.95rem; color: #e94560; margin-bottom: 8px;
+  }
+  #preview3d {
+    width: 100%; height: 400px; background: #111;
+    border: 2px solid #0f3460; border-radius: 8px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>sketch2stl</h1>
+  <span>Draw a sketch or upload an image, then convert to a 3D printable STL</span>
+</header>
+
+<div class="main">
+  <!-- Canvas Area -->
+  <div class="canvas-area">
+    <div class="toolbar">
+      <button id="brushBtn" class="active" title="Brush">Brush</button>
+      <button id="eraserBtn" title="Eraser">Eraser</button>
+      <div class="sep"></div>
+      <label>Size: <input type="range" id="brushSize" min="2" max="30" value="4"></label>
+      <div class="sep"></div>
+      <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="clearBtn" title="Clear canvas">Clear</button>
+      <div class="sep"></div>
+      <label class="toolbar button" style="cursor:pointer; background:#0f3460; border:1px solid #1a3a6a; padding:6px 14px; border-radius:6px;">
+        Upload Image
+        <input type="file" id="uploadInput" accept="image/*">
+      </label>
+    </div>
+    <canvas id="drawCanvas" width="800" height="600"></canvas>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h3>Parameters</h3>
+
+    <div class="param">
+      <label>Extrude Height (mm) <span id="valHeight">5.0</span></label>
+      <input type="range" id="extrudeHeight" min="0.5" max="30" step="0.5" value="5">
+    </div>
+    <div class="param">
+      <label>Base Thickness (mm) <span id="valBase">2.0</span></label>
+      <input type="range" id="baseThickness" min="0" max="10" step="0.5" value="2">
+    </div>
+    <div class="param">
+      <label>Scale (mm/px) <span id="valScale">0.10</span></label>
+      <input type="range" id="scale" min="0.01" max="1" step="0.01" value="0.1">
+    </div>
+    <div class="param">
+      <label>Upsample <span id="valUpsample">2</span></label>
+      <input type="range" id="upsample" min="1" max="4" step="1" value="2">
+    </div>
+    <div class="param">
+      <label>Blur Radius <span id="valBlur">5</span></label>
+      <input type="range" id="blurRadius" min="1" max="15" step="2" value="5">
+    </div>
+    <div class="param">
+      <label>Min Area (px²) <span id="valArea">200</span></label>
+      <input type="range" id="minArea" min="10" max="2000" step="10" value="200">
+    </div>
+    <div class="param">
+      <label>Base Margin (mm) <span id="valMargin">2.0</span></label>
+      <input type="range" id="baseMargin" min="0" max="10" step="0.5" value="2">
+    </div>
+
+    <div class="checkbox-param">
+      <input type="checkbox" id="invertCheck">
+      <label for="invertCheck">Invert (dark background)</label>
+    </div>
+
+    <button id="convertBtn">Convert to STL</button>
+    <a id="downloadBtn">Download STL</a>
+    <div id="statusMsg"></div>
+  </div>
+</div>
+
+<!-- 3D Preview -->
+<div class="preview-section">
+  <h3>3D Preview</h3>
+  <div id="preview3d"></div>
+</div>
+
+<!-- Three.js via importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+// ========== Drawing Canvas ==========
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+
+let drawing = false;
+let tool = 'brush'; // 'brush' | 'eraser'
+const undoStack = [];
+const MAX_UNDO = 20;
+
+// Init white background
+function clearCanvas() {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+clearCanvas();
+pushUndo();
+
+function pushUndo() {
+  if (undoStack.length >= MAX_UNDO) undoStack.shift();
+  undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+}
+
+function popUndo() {
+  if (undoStack.length <= 1) return; // keep at least the blank state
+  undoStack.pop(); // discard current
+  const prev = undoStack[undoStack.length - 1];
+  ctx.putImageData(prev, 0, 0);
+}
+
+// --- Pointer helpers (mouse + touch) ---
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let clientX, clientY;
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  drawing = true;
+  const pos = getPos(e);
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+}
+
+function moveDraw(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const pos = getPos(e);
+  const size = parseInt(document.getElementById('brushSize').value, 10);
+  ctx.lineWidth = size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : '#000000';
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+}
+
+function endDraw(e) {
+  if (!drawing) return;
+  drawing = false;
+  ctx.beginPath();
+  pushUndo();
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', moveDraw);
+canvas.addEventListener('mouseup', endDraw);
+canvas.addEventListener('mouseleave', endDraw);
+
+// Touch events
+canvas.addEventListener('touchstart', startDraw, { passive: false });
+canvas.addEventListener('touchmove', moveDraw, { passive: false });
+canvas.addEventListener('touchend', endDraw);
+canvas.addEventListener('touchcancel', endDraw);
+
+// --- Toolbar ---
+const brushBtn = document.getElementById('brushBtn');
+const eraserBtn = document.getElementById('eraserBtn');
+
+brushBtn.addEventListener('click', () => {
+  tool = 'brush';
+  brushBtn.classList.add('active');
+  eraserBtn.classList.remove('active');
+  canvas.style.cursor = 'crosshair';
+});
+eraserBtn.addEventListener('click', () => {
+  tool = 'eraser';
+  eraserBtn.classList.add('active');
+  brushBtn.classList.remove('active');
+  canvas.style.cursor = 'cell';
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  clearCanvas();
+  pushUndo();
+});
+document.getElementById('undoBtn').addEventListener('click', popUndo);
+
+// Ctrl+Z / Cmd+Z
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    popUndo();
+  }
+});
+
+// --- Upload Image ---
+document.getElementById('uploadInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      clearCanvas();
+      // Scale to fit while maintaining aspect ratio
+      const cw = canvas.width, ch = canvas.height;
+      const iw = img.width, ih = img.height;
+      const ratio = Math.min(cw / iw, ch / ih);
+      const dw = iw * ratio, dh = ih * ratio;
+      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      pushUndo();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// --- Slider value labels ---
+const sliders = [
+  ['extrudeHeight', 'valHeight', v => parseFloat(v).toFixed(1)],
+  ['baseThickness', 'valBase',   v => parseFloat(v).toFixed(1)],
+  ['scale',         'valScale',  v => parseFloat(v).toFixed(2)],
+  ['upsample',      'valUpsample', v => v],
+  ['blurRadius',    'valBlur',   v => v],
+  ['minArea',       'valArea',   v => v],
+  ['baseMargin',    'valMargin', v => parseFloat(v).toFixed(1)],
+];
+for (const [id, labelId, fmt] of sliders) {
+  const input = document.getElementById(id);
+  const label = document.getElementById(labelId);
+  input.addEventListener('input', () => { label.textContent = fmt(input.value); });
+}
+
+// ========== Convert ==========
+const convertBtn = document.getElementById('convertBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+let lastSTLBlob = null;
+
+convertBtn.addEventListener('click', async () => {
+  convertBtn.disabled = true;
+  statusMsg.textContent = 'Converting...';
+  statusMsg.className = '';
+  downloadBtn.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('image_data', canvas.toDataURL('image/png'));
+  formData.append('extrude_height', document.getElementById('extrudeHeight').value);
+  formData.append('base_thickness', document.getElementById('baseThickness').value);
+  formData.append('scale', document.getElementById('scale').value);
+  formData.append('upsample', document.getElementById('upsample').value);
+  formData.append('blur_radius', document.getElementById('blurRadius').value);
+  formData.append('min_area', document.getElementById('minArea').value);
+  formData.append('base_margin', document.getElementById('baseMargin').value);
+  formData.append('invert', document.getElementById('invertCheck').checked);
+
+  try {
+    const resp = await fetch('/convert', { method: 'POST', body: formData });
+    if (!resp.ok) {
+      const err = await resp.json();
+      if (err.type === 'not_enclosed') {
+        statusMsg.textContent = err.error;
+        statusMsg.className = 'warning';
+        convertBtn.disabled = false;
+        return;
+      }
+      throw new Error(err.error || `Server error ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    lastSTLBlob = blob;
+
+    // Show download button
+    const url = URL.createObjectURL(blob);
+    downloadBtn.href = url;
+    downloadBtn.download = 'sketch.stl';
+    downloadBtn.textContent = 'Download STL';
+    downloadBtn.style.display = 'block';
+
+    statusMsg.textContent = 'Conversion complete!';
+    statusMsg.className = '';
+
+    // 3D Preview
+    show3DPreview(blob);
+
+  } catch (err) {
+    statusMsg.textContent = err.message;
+    statusMsg.className = 'error';
+  } finally {
+    convertBtn.disabled = false;
+  }
+});
+
+// ========== 3D Preview ==========
+let scene, camera, renderer, controls, currentMesh;
+
+function init3D() {
+  const container = document.getElementById('preview3d');
+  container.style.display = 'block';
+
+  if (renderer) {
+    // Already initialized — just clear old mesh
+    if (currentMesh) { scene.remove(currentMesh); currentMesh = null; }
+    return;
+  }
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 10000);
+  camera.position.set(0, -50, 80);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.1;
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404040, 1.5);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(50, -50, 100);
+  scene.add(dirLight);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight2.position.set(-50, 50, 50);
+  scene.add(dirLight2);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Resize handler
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+}
+
+function show3DPreview(blob) {
+  init3D();
+
+  const loader = new STLLoader();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const geometry = loader.parse(e.target.result);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xe94560,
+      specular: 0x444444,
+      shininess: 40,
+      flatShading: false,
+    });
+
+    if (currentMesh) scene.remove(currentMesh);
+    currentMesh = new THREE.Mesh(geometry, material);
+    scene.add(currentMesh);
+
+    // Auto-center and zoom
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    currentMesh.position.sub(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
+
+    camera.position.set(0, -dist * 0.5, dist);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  };
+  reader.readAsArrayBuffer(blob);
+}
+</script>
+</body>
+</html>

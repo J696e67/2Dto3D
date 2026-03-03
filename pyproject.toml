@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "sketch2stl"
+version = "0.1.0"
+description = "Convert a 2D sketch/drawing image into a 3D printable STL file."
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "numpy-stl>=3.0",
+]
+
+[project.optional-dependencies]
+preview = ["matplotlib>=3.7"]
+
+[project.scripts]
+sketch2stl = "sketch2stl:main"
+
+[tool.setuptools]
+py-modules = ["sketch2stl"]
