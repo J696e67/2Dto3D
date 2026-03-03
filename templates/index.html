@@ -22,7 +22,7 @@
   .main { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
 
   /* --- Canvas area --- */
-  .canvas-area { flex: 1; min-width: 500px; }
+  .canvas-area { flex: 1; min-width: 0; }
   .toolbar {
     display: flex; gap: 8px; align-items: center;
     margin-bottom: 8px; flex-wrap: wrap;
@@ -32,17 +32,42 @@
     padding: 6px 14px; border-radius: 6px; cursor: pointer;
     font-size: 0.82rem; transition: background 0.15s;
   }
-  .toolbar button:hover { background: #1a4a80; }
-  .toolbar button.active { background: #e94560; border-color: #e94560; }
+  .toolbar button:not(.color-swatch):hover { background: #1a4a80; }
+  .toolbar button.active:not(.color-swatch) { background: #e94560; border-color: #e94560; }
   .toolbar input[type="range"] { width: 80px; vertical-align: middle; }
   .toolbar .sep { width: 1px; height: 24px; background: #333; }
   .toolbar input[type="file"] { display: none; }
+
+  .color-swatch {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid #555; cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    padding: 0; background: none;
+  }
+  .color-swatch:hover { border-color: #aaa; }
+  .color-swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px #e94560;
+  }
+
+  .color-height-row {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .color-height-row .color-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    flex-shrink: 0; border: 1px solid #555;
+  }
+  .color-height-row input[type="range"] { flex: 1; min-width: 0; }
+  .color-height-row .color-height-val {
+    font-size: 0.75rem; color: #e94560; font-weight: 600;
+    width: 32px; text-align: right; flex-shrink: 0;
+  }
 
   canvas#drawCanvas {
     border: 2px solid #0f3460; border-radius: 8px;
     cursor: crosshair; display: block;
     background: #fff; touch-action: none;
-    max-width: 100%;
+    max-width: 100%; height: auto;
   }
 
   /* --- Sidebar --- */
@@ -110,6 +135,76 @@
     border: 2px solid #0f3460; border-radius: 8px;
     display: none;
   }
+
+  /* --- Tablet breakpoint --- */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    .sidebar { width: 220px; }
+    .toolbar button, .toolbar label {
+      min-height: 40px;
+    }
+  }
+
+  /* --- Mobile breakpoint --- */
+  @media (max-width: 767px) {
+    header {
+      flex-direction: column; align-items: flex-start;
+      padding: 10px 16px; gap: 4px;
+    }
+    header h1 { font-size: 1.1rem; }
+    header span { font-size: 0.78rem; }
+
+    .main {
+      flex-direction: column;
+      padding: 10px;
+      gap: 12px;
+    }
+
+    .sidebar {
+      width: 100%;
+      padding: 12px;
+    }
+
+    .toolbar button, .toolbar label {
+      min-height: 44px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+    }
+    .toolbar input[type="range"] {
+      min-height: 44px;
+    }
+
+    .param input[type="range"], .param select {
+      min-height: 44px;
+    }
+
+    .checkbox-param {
+      min-height: 44px;
+      align-items: center;
+    }
+    .checkbox-param input {
+      width: 20px; height: 20px;
+    }
+
+    #convertBtn {
+      min-height: 48px;
+      width: 100%;
+      font-size: 1.05rem;
+    }
+    #downloadBtn {
+      min-height: 48px;
+      width: 100%;
+      font-size: 0.95rem;
+      display: none;
+    }
+
+    #preview3d {
+      height: 300px;
+    }
+
+    .preview-section {
+      padding: 0 10px 10px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -126,6 +221,12 @@
       <button id="brushBtn" class="active" title="Brush">Brush</button>
       <button id="eraserBtn" title="Eraser">Eraser</button>
       <div class="sep"></div>
+      <button class="color-swatch active" data-color="#000000" style="background:#000000;" title="Black"></button>
+      <button class="color-swatch" data-color="#E94560" style="background:#E94560;" title="Red"></button>
+      <button class="color-swatch" data-color="#3498DB" style="background:#3498DB;" title="Blue"></button>
+      <button class="color-swatch" data-color="#2ECC71" style="background:#2ECC71;" title="Green"></button>
+      <button class="color-swatch" data-color="#F39C12" style="background:#F39C12;" title="Orange"></button>
+      <div class="sep"></div>
       <label>Size: <input type="range" id="brushSize" min="2" max="30" value="4"></label>
       <div class="sep"></div>
       <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
@@ -141,12 +242,35 @@
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <h3>Parameters</h3>
+    <h3>Color Heights (mm)</h3>
 
-    <div class="param">
-      <label>Extrude Height (mm) <span id="valHeight">5.0</span></label>
-      <input type="range" id="extrudeHeight" min="0.5" max="30" step="0.5" value="5">
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#000000;"></div>
+      <input type="range" id="height_000000" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_000000">5.0</span>
     </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#E94560;"></div>
+      <input type="range" id="height_E94560" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_E94560">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#3498DB;"></div>
+      <input type="range" id="height_3498DB" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_3498DB">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#2ECC71;"></div>
+      <input type="range" id="height_2ECC71" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_2ECC71">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#F39C12;"></div>
+      <input type="range" id="height_F39C12" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_F39C12">5.0</span>
+    </div>
+
+    <h3 style="margin-top:8px;">Parameters</h3>
     <div class="param">
       <label>Base Thickness (mm) <span id="valBase">2.0</span></label>
       <input type="range" id="baseThickness" min="0" max="10" step="0.5" value="2">
@@ -210,8 +334,17 @@ const ctx = canvas.getContext('2d');
 
 let drawing = false;
 let tool = 'brush'; // 'brush' | 'eraser'
+let activeColor = '#000000';
 const undoStack = [];
 const MAX_UNDO = 20;
+
+const PALETTE = [
+  { name: 'Black',  hex: '#000000' },
+  { name: 'Red',    hex: '#E94560' },
+  { name: 'Blue',   hex: '#3498DB' },
+  { name: 'Green',  hex: '#2ECC71' },
+  { name: 'Orange', hex: '#F39C12' },
+];
 
 // Init white background
 function clearCanvas() {
@@ -268,7 +401,7 @@ function moveDraw(e) {
   ctx.lineWidth = size;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : '#000000';
+  ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : activeColor;
   ctx.lineTo(pos.x, pos.y);
   ctx.stroke();
   ctx.beginPath();
@@ -311,6 +444,21 @@ eraserBtn.addEventListener('click', () => {
   canvas.style.cursor = 'cell';
 });
 
+// --- Color swatches ---
+const swatches = document.querySelectorAll('.color-swatch');
+swatches.forEach(swatch => {
+  swatch.addEventListener('click', () => {
+    activeColor = swatch.dataset.color;
+    swatches.forEach(s => s.classList.remove('active'));
+    swatch.classList.add('active');
+    // Switch to brush tool when picking a color
+    tool = 'brush';
+    brushBtn.classList.add('active');
+    eraserBtn.classList.remove('active');
+    canvas.style.cursor = 'crosshair';
+  });
+});
+
 document.getElementById('clearBtn').addEventListener('click', () => {
   clearCanvas();
   pushUndo();
@@ -350,7 +498,6 @@ document.getElementById('uploadInput').addEventListener('change', (e) => {
 
 // --- Slider value labels ---
 const sliders = [
-  ['extrudeHeight', 'valHeight', v => parseFloat(v).toFixed(1)],
   ['baseThickness', 'valBase',   v => parseFloat(v).toFixed(1)],
   ['scale',         'valScale',  v => parseFloat(v).toFixed(2)],
   ['upsample',      'valUpsample', v => v],
@@ -362,6 +509,16 @@ for (const [id, labelId, fmt] of sliders) {
   const input = document.getElementById(id);
   const label = document.getElementById(labelId);
   input.addEventListener('input', () => { label.textContent = fmt(input.value); });
+}
+
+// --- Color height slider labels ---
+const colorHeightIds = ['000000', 'E94560', '3498DB', '2ECC71', 'F39C12'];
+for (const cid of colorHeightIds) {
+  const input = document.getElementById('height_' + cid);
+  const label = document.getElementById('valHeight_' + cid);
+  input.addEventListener('input', () => {
+    label.textContent = parseFloat(input.value).toFixed(1);
+  });
 }
 
 // ========== Convert ==========
@@ -379,7 +536,6 @@ convertBtn.addEventListener('click', async () => {
 
   const formData = new FormData();
   formData.append('image_data', canvas.toDataURL('image/png'));
-  formData.append('extrude_height', document.getElementById('extrudeHeight').value);
   formData.append('base_thickness', document.getElementById('baseThickness').value);
   formData.append('scale', document.getElementById('scale').value);
   formData.append('upsample', document.getElementById('upsample').value);
@@ -387,6 +543,14 @@ convertBtn.addEventListener('click', async () => {
   formData.append('min_area', document.getElementById('minArea').value);
   formData.append('base_margin', document.getElementById('baseMargin').value);
   formData.append('invert', document.getElementById('invertCheck').checked);
+
+  // Build per-color height map
+  const colorHeights = {};
+  for (const p of PALETTE) {
+    const sliderId = 'height_' + p.hex.replace('#', '');
+    colorHeights[p.hex] = parseFloat(document.getElementById(sliderId).value);
+  }
+  formData.append('color_heights', JSON.stringify(colorHeights));
 
   try {
     const resp = await fetch('/convert', { method: 'POST', body: formData });

@@ -6,6 +6,8 @@ Usage:
     sketch2stl input.png output.stl [options]
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 import os
@@ -74,6 +76,76 @@ def load_and_preprocess(
         binary = cv2.bitwise_not(binary)
 
     return binary
+
+
+def load_and_preprocess_color(
+    image_path: str,
+    palette_colors_rgb: list[tuple[int, int, int]],
+    blur_radius: int = 5,
+    upsample: int = 2,
+) -> dict[tuple, np.ndarray]:
+    """
+    Load a color image and segment it into per-color binary masks.
+
+    For each non-white pixel, the closest palette color (by Euclidean RGB
+    distance) is determined.  Returns a dict mapping ``(r, g, b)`` tuples
+    to binary masks (0/255 uint8) — only colors with non-empty masks are
+    included.
+
+    Parameters
+    ----------
+    image_path : str
+        Path to the input PNG or JPG file.
+    palette_colors_rgb : list of (r, g, b) tuples
+        The palette colors to segment against.
+    blur_radius : int
+        Gaussian blur kernel size for mask cleanup.
+    upsample : int
+        Integer upsampling factor (≥1).
+    """
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    img = cv2.imread(image_path, cv2.IMREAD_COLOR)  # BGR
+    if img is None:
+        raise ValueError(f"OpenCV could not read image: {image_path}")
+
+    # Upsample
+    upsample = max(1, int(upsample))
+    if upsample > 1:
+        h, w = img.shape[:2]
+        img = cv2.resize(img, (w * upsample, h * upsample),
+                         interpolation=cv2.INTER_LANCZOS4)
+
+    # Convert BGR → RGB for distance computation
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32)
+
+    # Distance to white — pixels close to white are background
+    white = np.array([255.0, 255.0, 255.0])
+    dist_to_white = np.linalg.norm(img_rgb - white, axis=2)
+    white_threshold = 60.0  # pixels within this distance of white = background
+    is_background = dist_to_white < white_threshold
+
+    # For non-background pixels, find the closest palette color
+    palette = np.array(palette_colors_rgb, dtype=np.float32)  # (P, 3)
+    # Broadcast: (H, W, 1, 3) - (1, 1, P, 3) → (H, W, P)
+    diffs = img_rgb[:, :, np.newaxis, :] - palette[np.newaxis, np.newaxis, :, :]
+    dists = np.linalg.norm(diffs, axis=3)  # (H, W, P)
+    nearest_idx = np.argmin(dists, axis=2)  # (H, W)
+
+    # Build per-color masks
+    blur_radius = max(1, blur_radius | 1)
+    result: dict[tuple, np.ndarray] = {}
+    for i, rgb in enumerate(palette_colors_rgb):
+        raw_mask = ((nearest_idx == i) & ~is_background).astype(np.uint8) * 255
+        # Cleanup: blur + threshold to remove anti-aliasing noise
+        if blur_radius > 1:
+            raw_mask = cv2.GaussianBlur(raw_mask, (blur_radius, blur_radius), 0)
+            _, raw_mask = cv2.threshold(raw_mask, 127, 255, cv2.THRESH_BINARY)
+        if np.any(raw_mask):
+            result[tuple(rgb)] = raw_mask
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +814,159 @@ def extrude_contour_groups_to_stl(
                 if _normal(v0, v1, v2)[2] > 0:
                     v0, v2 = v2, v0
                 all_triangles.append((v0, v1, v2))
+
+    # Build numpy-stl mesh
+    num_tris = len(all_triangles)
+    stl_mesh = mesh.Mesh(np.zeros(num_tris, dtype=mesh.Mesh.dtype))
+    for i, (v0, v1, v2) in enumerate(all_triangles):
+        stl_mesh.vectors[i] = np.array([v0, v1, v2])
+
+    stl_mesh.update_normals()
+    return stl_mesh
+
+
+def extrude_multicolor_to_stl(
+    color_groups: list[tuple[list[tuple[np.ndarray, list[np.ndarray]]], float]],
+    image_height: int,
+    scale: float = 0.1,
+    base_thickness: float = 2.0,
+    base_margin: float = 2.0,
+    base_contour_groups: list[tuple[np.ndarray, list[np.ndarray]]] | None = None,
+) -> mesh.Mesh:
+    """
+    Extrude multiple color groups, each at its own height, into one STL mesh.
+
+    Parameters
+    ----------
+    color_groups : list of (contour_groups, extrude_height)
+        Each entry is a list of (outer, [holes]) contour groups for one color,
+        paired with that color's extrusion height in mm.
+    image_height : int
+        Height of the source image in pixels (for Y-flip).
+    scale : float
+        mm per pixel.
+    base_thickness : float
+        Thickness of the base plate (mm).  Set to 0 to skip the base.
+    base_margin : float
+        (Reserved for future use with shaped bases.)
+    base_contour_groups : list of (outer, [holes]) or None
+        Contour groups extracted from the **combined** mask of all colors.
+        Used to determine the base plate shape so that all colors together
+        form the enclosed area.  If None, falls back to searching among
+        individual color contour groups.
+    """
+    # Use combined contour groups for base determination if provided
+    if base_contour_groups is not None:
+        search_groups = base_contour_groups
+    else:
+        search_groups = []
+        for contour_groups, _ in color_groups:
+            search_groups.extend(contour_groups)
+
+    if not search_groups and not any(cg for cg, _ in color_groups):
+        raise ValueError(
+            "No contour groups to extrude. The image may be blank "
+            "or all shapes were filtered out."
+        )
+
+    # Find the base contour: largest group that has holes (= closed outline)
+    base_group_idx = -1
+    max_area = 0.0
+    for i, (outer, holes) in enumerate(search_groups):
+        if holes:
+            area = cv2.contourArea(outer)
+            if area > max_area:
+                max_area = area
+                base_group_idx = i
+
+    if base_group_idx == -1 and base_thickness > 0:
+        raise NotEnclosedError(
+            "Your drawing does not have a closed outline. "
+            "Please draw a closed boundary around your design "
+            "so it can be used as the base shape."
+        )
+
+    def to_mm(cnt):
+        pts = cnt.reshape(-1, 2)
+        return np.column_stack([
+            pts[:, 0] * scale,
+            (image_height - pts[:, 1]) * scale,
+        ])
+
+    all_triangles: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+
+    # Shaped base plate (from combined contour groups)
+    if base_group_idx >= 0 and base_thickness > 0:
+        base_outer = search_groups[base_group_idx][0]
+        base_2d = to_mm(base_outer)
+        _extrude_solid_polygon(base_2d, 0.0, base_thickness, all_triangles)
+
+    # Extrude each color's contour groups at its assigned height
+    for contour_groups, extrude_height in color_groups:
+        z_extrude_bottom = base_thickness
+        z_extrude_top = base_thickness + extrude_height
+
+        for outer, holes in contour_groups:
+            outer_2d = to_mm(outer)
+            hole_2ds = [to_mm(h) for h in holes]
+
+            n_outer = len(outer_2d)
+            if n_outer < 3:
+                continue
+
+            top_outer = np.column_stack([outer_2d, np.full(n_outer, z_extrude_top)])
+            bot_outer = np.column_stack([outer_2d, np.full(n_outer, z_extrude_bottom)])
+
+            # Side walls — outer boundary
+            for i in range(n_outer):
+                j = (i + 1) % n_outer
+                all_triangles.append((top_outer[i], bot_outer[i], bot_outer[j]))
+                all_triangles.append((top_outer[i], bot_outer[j], top_outer[j]))
+
+            # Side walls — each hole boundary
+            for h_2d in hole_2ds:
+                nh = len(h_2d)
+                if nh < 3:
+                    continue
+                top_h = np.column_stack([h_2d, np.full(nh, z_extrude_top)])
+                bot_h = np.column_stack([h_2d, np.full(nh, z_extrude_bottom)])
+                for i in range(nh):
+                    j = (i + 1) % nh
+                    all_triangles.append((top_h[i], top_h[j], bot_h[j]))
+                    all_triangles.append((top_h[i], bot_h[j], bot_h[i]))
+
+            # Top & bottom caps
+            if hole_2ds:
+                verts_all, tri_idx = _triangulate_with_holes(outer_2d, hole_2ds)
+                n_all = len(verts_all)
+                top_all = np.column_stack([verts_all, np.full(n_all, z_extrude_top)])
+                bot_all = np.column_stack([verts_all, np.full(n_all, z_extrude_bottom)])
+
+                for a, b, c in tri_idx:
+                    v0, v1, v2 = top_all[a], top_all[b], top_all[c]
+                    if _normal(v0, v1, v2)[2] < 0:
+                        v0, v2 = v2, v0
+                    all_triangles.append((v0, v1, v2))
+
+                for a, b, c in tri_idx:
+                    v0, v1, v2 = bot_all[a], bot_all[b], bot_all[c]
+                    if _normal(v0, v1, v2)[2] > 0:
+                        v0, v2 = v2, v0
+                    all_triangles.append((v0, v1, v2))
+            else:
+                top_tris = _ear_clip_triangulate(outer_2d)
+                for a, b, c in top_tris:
+                    v0, v1, v2 = top_outer[a], top_outer[b], top_outer[c]
+                    if _normal(v0, v1, v2)[2] < 0:
+                        v0, v2 = v2, v0
+                    all_triangles.append((v0, v1, v2))
+
+                bot_tris = _ear_clip_triangulate(outer_2d)
+                for a, b, c in bot_tris:
+                    v0, v1, v2 = bot_outer[a], bot_outer[b], bot_outer[c]
+                    if _normal(v0, v1, v2)[2] > 0:
+                        v0, v2 = v2, v0
+                    all_triangles.append((v0, v1, v2))
 
     # Build numpy-stl mesh
     num_tris = len(all_triangles)
