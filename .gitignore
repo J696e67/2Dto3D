@@ -4,3 +4,7 @@ __pycache__/
 .env
 *.stl
 .DS_Store
+node_modules/
+frontend/ios/
+frontend/www/
+frontend/.capacitor/

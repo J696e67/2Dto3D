@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>sketch2stl — Draw &amp; Convert to 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #1a1a2e; color: #e0e0e0;
+    min-height: 100vh;
+    /* iOS safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  header {
+    background: #16213e; padding: 48px 24px 12px;
+    border-bottom: 1px solid #0f3460;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.3rem; color: #e94560; }
+  header span { font-size: 0.85rem; color: #888; }
+
+  .main { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+
+  /* --- Canvas area --- */
+  .canvas-area { flex: 1; min-width: 0; }
+  .toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .toolbar button, .toolbar label {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-size: 0.82rem; transition: background 0.15s;
+  }
+  .toolbar button:not(.color-swatch):hover { background: #1a4a80; }
+  .toolbar button.active:not(.color-swatch) { background: #e94560; border-color: #e94560; }
+  .toolbar input[type="range"] { width: 80px; vertical-align: middle; }
+  .toolbar .sep { width: 1px; height: 24px; background: #333; }
+  .toolbar input[type="file"] { display: none; }
+
+  .color-swatch {
+    width: 32px; height: 32px; border-radius: 6px;
+    border: 2px solid #555; cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    padding: 0; background: none;
+  }
+  .color-swatch:hover { border-color: #aaa; }
+  .color-swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px #e94560;
+  }
+
+  .color-height-row {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .color-height-row .color-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    flex-shrink: 0; border: 1px solid #555;
+  }
+  .color-height-row input[type="range"] { flex: 1; min-width: 0; }
+  .color-height-row .color-height-val {
+    font-size: 0.75rem; color: #e94560; font-weight: 600;
+    width: 32px; text-align: right; flex-shrink: 0;
+  }
+
+  canvas#drawCanvas {
+    border: 2px solid #0f3460; border-radius: 8px;
+    cursor: crosshair; display: block;
+    background: #fff; touch-action: none;
+    max-width: 100%; height: auto;
+  }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    width: 260px; background: #16213e; border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    border: 1px solid #0f3460;
+  }
+  .sidebar h3 { font-size: 0.95rem; color: #e94560; margin-bottom: 4px; }
+  .param { display: flex; flex-direction: column; gap: 2px; }
+  .param label {
+    font-size: 0.78rem; color: #aaa;
+    display: flex; justify-content: space-between;
+  }
+  .param label span { color: #e94560; font-weight: 600; }
+  .param input[type="range"], .param select {
+    width: 100%; accent-color: #e94560;
+  }
+  .param select {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 4px; border-radius: 4px;
+  }
+
+  .checkbox-param {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.82rem; color: #aaa;
+  }
+  .checkbox-param input { accent-color: #e94560; }
+
+  #convertBtn {
+    background: #e94560; color: #fff; border: none;
+    padding: 12px; border-radius: 8px; font-size: 1rem;
+    cursor: pointer; font-weight: 600; transition: background 0.15s;
+  }
+  #convertBtn:hover { background: #c73650; }
+  #convertBtn:disabled { background: #555; cursor: wait; }
+
+  #downloadBtn {
+    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
+    padding: 10px; border-radius: 8px; font-size: 0.9rem;
+    cursor: pointer; text-align: center; display: none;
+    text-decoration: none; font-weight: 500;
+  }
+  #downloadBtn:hover { background: #1a4a80; }
+
+  #statusMsg {
+    font-size: 0.82rem; color: #aaa; min-height: 1.2em;
+  }
+  #statusMsg.error { color: #e94560; }
+  #statusMsg.warning {
+    color: #f0a500; background: rgba(240,165,0,0.1);
+    border: 1px solid rgba(240,165,0,0.3); border-radius: 6px;
+    padding: 8px; line-height: 1.4;
+  }
+
+  /* --- 3D Preview --- */
+  .preview-section {
+    width: 100%; padding: 0 16px 16px;
+  }
+  .preview-section h3 {
+    font-size: 0.95rem; color: #e94560; margin-bottom: 8px;
+  }
+  #preview3d {
+    width: 100%; height: 400px; background: #111;
+    border: 2px solid #0f3460; border-radius: 8px;
+    display: none;
+  }
+
+  /* --- Tablet breakpoint --- */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    .sidebar { width: 220px; }
+    .toolbar button, .toolbar label {
+      min-height: 40px;
+    }
+  }
+
+  /* --- Mobile breakpoint --- */
+  @media (max-width: 767px) {
+    header {
+      flex-direction: column; align-items: flex-start;
+      padding: 48px 16px 10px; gap: 4px;
+    }
+    header h1 { font-size: 1.1rem; }
+    header span { font-size: 0.78rem; }
+
+    .main {
+      flex-direction: column;
+      padding: 10px;
+      gap: 12px;
+    }
+
+    .sidebar {
+      width: 100%;
+      padding: 12px;
+    }
+
+    .toolbar button, .toolbar label {
+      min-height: 36px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+    .toolbar .color-swatch {
+      width: 36px; height: 36px;
+    }
+    .toolbar input[type="range"] {
+      min-height: 44px;
+    }
+
+    .param input[type="range"], .param select {
+      min-height: 44px;
+    }
+
+    .checkbox-param {
+      min-height: 44px;
+      align-items: center;
+    }
+    .checkbox-param input {
+      width: 20px; height: 20px;
+    }
+
+    #convertBtn {
+      min-height: 48px;
+      width: 100%;
+      font-size: 1.05rem;
+    }
+    #downloadBtn {
+      min-height: 48px;
+      width: 100%;
+      font-size: 0.95rem;
+      display: none;
+    }
+
+    #preview3d {
+      height: 300px;
+    }
+
+    .preview-section {
+      padding: 0 10px 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>sketch2stl</h1>
+  <span>Draw a sketch or upload an image, then convert to a 3D printable STL</span>
+</header>
+
+<div class="main">
+  <!-- Canvas Area -->
+  <div class="canvas-area">
+    <div class="toolbar">
+      <button id="brushBtn" class="active" title="Brush">Brush</button>
+      <button id="eraserBtn" title="Eraser">Eraser</button>
+      <div class="sep"></div>
+      <button class="color-swatch active" data-color="#000000" style="background:#000000;" title="Black"></button>
+      <button class="color-swatch" data-color="#E94560" style="background:#E94560;" title="Red"></button>
+      <button class="color-swatch" data-color="#3498DB" style="background:#3498DB;" title="Blue"></button>
+      <button class="color-swatch" data-color="#2ECC71" style="background:#2ECC71;" title="Green"></button>
+      <button class="color-swatch" data-color="#F39C12" style="background:#F39C12;" title="Orange"></button>
+      <div class="sep"></div>
+      <label>Size: <input type="range" id="brushSize" min="2" max="30" value="4"></label>
+      <div class="sep"></div>
+      <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="clearBtn" title="Clear canvas">Clear</button>
+      <div class="sep"></div>
+      <label class="toolbar button" style="cursor:pointer; background:#0f3460; border:1px solid #1a3a6a; padding:6px 14px; border-radius:6px;">
+        Upload Image
+        <input type="file" id="uploadInput" accept="image/*">
+      </label>
+    </div>
+    <canvas id="drawCanvas" width="800" height="600"></canvas>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h3>Color Heights (mm)</h3>
+
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#000000;"></div>
+      <input type="range" id="height_000000" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_000000">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#E94560;"></div>
+      <input type="range" id="height_E94560" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_E94560">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#3498DB;"></div>
+      <input type="range" id="height_3498DB" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_3498DB">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#2ECC71;"></div>
+      <input type="range" id="height_2ECC71" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_2ECC71">5.0</span>
+    </div>
+    <div class="color-height-row">
+      <div class="color-dot" style="background:#F39C12;"></div>
+      <input type="range" id="height_F39C12" min="0.5" max="30" step="0.5" value="5">
+      <span class="color-height-val" id="valHeight_F39C12">5.0</span>
+    </div>
+
+    <h3 style="margin-top:8px;">Parameters</h3>
+    <div class="param">
+      <label>Base Thickness (mm) <span id="valBase">2.0</span></label>
+      <input type="range" id="baseThickness" min="0" max="10" step="0.5" value="2">
+    </div>
+    <div class="param">
+      <label>Scale (mm/px) <span id="valScale">0.10</span></label>
+      <input type="range" id="scale" min="0.01" max="1" step="0.01" value="0.1">
+    </div>
+    <div class="param">
+      <label>Upsample <span id="valUpsample">2</span></label>
+      <input type="range" id="upsample" min="1" max="4" step="1" value="2">
+    </div>
+    <div class="param">
+      <label>Blur Radius <span id="valBlur">5</span></label>
+      <input type="range" id="blurRadius" min="1" max="15" step="2" value="5">
+    </div>
+    <div class="param">
+      <label>Min Area (px²) <span id="valArea">200</span></label>
+      <input type="range" id="minArea" min="10" max="2000" step="10" value="200">
+    </div>
+    <div class="param">
+      <label>Base Margin (mm) <span id="valMargin">2.0</span></label>
+      <input type="range" id="baseMargin" min="0" max="10" step="0.5" value="2">
+    </div>
+
+    <div class="checkbox-param">
+      <input type="checkbox" id="invertCheck">
+      <label for="invertCheck">Invert (dark background)</label>
+    </div>
+
+    <button id="convertBtn">Convert to STL</button>
+    <button id="downloadBtn" style="display:none;">Download / Share STL</button>
+    <div id="statusMsg"></div>
+  </div>
+</div>
+
+<!-- 3D Preview -->
+<div class="preview-section">
+  <h3>3D Preview</h3>
+  <div id="preview3d"></div>
+</div>
+
+<!-- Three.js via importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+// ========== API Configuration ==========
+// Change this to your deployed backend URL for production
+// e.g. 'https://sketch2stl-api.fly.dev'
+const API_BASE_URL = window.SKETCH2STL_API_URL || 'http://192.168.68.20:5001';
+
+// ========== Drawing Canvas ==========
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+
+let drawing = false;
+let tool = 'brush'; // 'brush' | 'eraser'
+let activeColor = '#000000';
+const undoStack = [];
+const MAX_UNDO = 20;
+
+const PALETTE = [
+  { name: 'Black',  hex: '#000000' },
+  { name: 'Red',    hex: '#E94560' },
+  { name: 'Blue',   hex: '#3498DB' },
+  { name: 'Green',  hex: '#2ECC71' },
+  { name: 'Orange', hex: '#F39C12' },
+];
+
+// Init white background
+function clearCanvas() {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+clearCanvas();
+pushUndo();
+
+function pushUndo() {
+  if (undoStack.length >= MAX_UNDO) undoStack.shift();
+  undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+}
+
+function popUndo() {
+  if (undoStack.length <= 1) return; // keep at least the blank state
+  undoStack.pop(); // discard current
+  const prev = undoStack[undoStack.length - 1];
+  ctx.putImageData(prev, 0, 0);
+}
+
+// --- Pointer helpers (mouse + touch) ---
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let clientX, clientY;
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  drawing = true;
+  const pos = getPos(e);
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+}
+
+function moveDraw(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const pos = getPos(e);
+  const size = parseInt(document.getElementById('brushSize').value, 10);
+  ctx.lineWidth = size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : activeColor;
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+}
+
+function endDraw(e) {
+  if (!drawing) return;
+  drawing = false;
+  ctx.beginPath();
+  pushUndo();
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', moveDraw);
+canvas.addEventListener('mouseup', endDraw);
+canvas.addEventListener('mouseleave', endDraw);
+
+// Touch events
+canvas.addEventListener('touchstart', startDraw, { passive: false });
+canvas.addEventListener('touchmove', moveDraw, { passive: false });
+canvas.addEventListener('touchend', endDraw);
+canvas.addEventListener('touchcancel', endDraw);
+
+// --- Toolbar ---
+const brushBtn = document.getElementById('brushBtn');
+const eraserBtn = document.getElementById('eraserBtn');
+
+brushBtn.addEventListener('click', () => {
+  tool = 'brush';
+  brushBtn.classList.add('active');
+  eraserBtn.classList.remove('active');
+  canvas.style.cursor = 'crosshair';
+});
+eraserBtn.addEventListener('click', () => {
+  tool = 'eraser';
+  eraserBtn.classList.add('active');
+  brushBtn.classList.remove('active');
+  canvas.style.cursor = 'cell';
+});
+
+// --- Color swatches ---
+const swatches = document.querySelectorAll('.color-swatch');
+swatches.forEach(swatch => {
+  swatch.addEventListener('click', () => {
+    activeColor = swatch.dataset.color;
+    swatches.forEach(s => s.classList.remove('active'));
+    swatch.classList.add('active');
+    // Switch to brush tool when picking a color
+    tool = 'brush';
+    brushBtn.classList.add('active');
+    eraserBtn.classList.remove('active');
+    canvas.style.cursor = 'crosshair';
+  });
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  clearCanvas();
+  pushUndo();
+});
+document.getElementById('undoBtn').addEventListener('click', popUndo);
+
+// Ctrl+Z / Cmd+Z
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    popUndo();
+  }
+});
+
+// --- Upload Image ---
+document.getElementById('uploadInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      clearCanvas();
+      // Scale to fit while maintaining aspect ratio
+      const cw = canvas.width, ch = canvas.height;
+      const iw = img.width, ih = img.height;
+      const ratio = Math.min(cw / iw, ch / ih);
+      const dw = iw * ratio, dh = ih * ratio;
+      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      pushUndo();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// --- Slider value labels ---
+const sliders = [
+  ['baseThickness', 'valBase',   v => parseFloat(v).toFixed(1)],
+  ['scale',         'valScale',  v => parseFloat(v).toFixed(2)],
+  ['upsample',      'valUpsample', v => v],
+  ['blurRadius',    'valBlur',   v => v],
+  ['minArea',       'valArea',   v => v],
+  ['baseMargin',    'valMargin', v => parseFloat(v).toFixed(1)],
+];
+for (const [id, labelId, fmt] of sliders) {
+  const input = document.getElementById(id);
+  const label = document.getElementById(labelId);
+  input.addEventListener('input', () => { label.textContent = fmt(input.value); });
+}
+
+// --- Color height slider labels ---
+const colorHeightIds = ['000000', 'E94560', '3498DB', '2ECC71', 'F39C12'];
+for (const cid of colorHeightIds) {
+  const input = document.getElementById('height_' + cid);
+  const label = document.getElementById('valHeight_' + cid);
+  input.addEventListener('input', () => {
+    label.textContent = parseFloat(input.value).toFixed(1);
+  });
+}
+
+// ========== Convert ==========
+const convertBtn = document.getElementById('convertBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+let lastSTLBlob = null;
+
+async function saveOrShareSTL(blob) {
+  const file = new File([blob], 'sketch.stl', { type: 'application/octet-stream' });
+  // Try native share (works on iOS)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'sketch.stl' });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // user cancelled
+    }
+  }
+  // Fallback: regular download for desktop browsers
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sketch.stl';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+convertBtn.addEventListener('click', async () => {
+  convertBtn.disabled = true;
+  statusMsg.textContent = 'Converting...';
+  statusMsg.className = '';
+  downloadBtn.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('image_data', canvas.toDataURL('image/png'));
+  formData.append('base_thickness', document.getElementById('baseThickness').value);
+  formData.append('scale', document.getElementById('scale').value);
+  formData.append('upsample', document.getElementById('upsample').value);
+  formData.append('blur_radius', document.getElementById('blurRadius').value);
+  formData.append('min_area', document.getElementById('minArea').value);
+  formData.append('base_margin', document.getElementById('baseMargin').value);
+  formData.append('invert', document.getElementById('invertCheck').checked);
+
+  // Build per-color height map
+  const colorHeights = {};
+  for (const p of PALETTE) {
+    const sliderId = 'height_' + p.hex.replace('#', '');
+    colorHeights[p.hex] = parseFloat(document.getElementById(sliderId).value);
+  }
+  formData.append('color_heights', JSON.stringify(colorHeights));
+
+  try {
+    const resp = await fetch(API_BASE_URL + '/convert', { method: 'POST', body: formData });
+    if (!resp.ok) {
+      const err = await resp.json();
+      if (err.type === 'not_enclosed') {
+        statusMsg.textContent = err.error;
+        statusMsg.className = 'warning';
+        convertBtn.disabled = false;
+        return;
+      }
+      throw new Error(err.error || `Server error ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    lastSTLBlob = blob;
+
+    // Show download button
+    downloadBtn.style.display = 'block';
+    downloadBtn.onclick = function() { saveOrShareSTL(blob); };
+
+    statusMsg.textContent = 'Conversion complete!';
+    statusMsg.className = '';
+
+    // 3D Preview
+    show3DPreview(blob);
+
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      statusMsg.textContent = 'Cannot reach the conversion server. Please check your internet connection and try again.';
+    } else {
+      statusMsg.textContent = err.message;
+    }
+    statusMsg.className = 'error';
+  } finally {
+    convertBtn.disabled = false;
+  }
+});
+
+// ========== 3D Preview ==========
+let scene, camera, renderer, controls, currentMesh;
+
+function init3D() {
+  const container = document.getElementById('preview3d');
+  container.style.display = 'block';
+
+  if (renderer) {
+    // Already initialized — just clear old mesh
+    if (currentMesh) { scene.remove(currentMesh); currentMesh = null; }
+    return;
+  }
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 10000);
+  camera.position.set(0, -50, 80);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.1;
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404040, 1.5);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(50, -50, 100);
+  scene.add(dirLight);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight2.position.set(-50, 50, 50);
+  scene.add(dirLight2);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Resize handler
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+}
+
+function show3DPreview(blob) {
+  init3D();
+
+  const loader = new STLLoader();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const geometry = loader.parse(e.target.result);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xe94560,
+      specular: 0x444444,
+      shininess: 40,
+      flatShading: false,
+    });
+
+    if (currentMesh) scene.remove(currentMesh);
+    currentMesh = new THREE.Mesh(geometry, material);
+    scene.add(currentMesh);
+
+    // Auto-center and zoom
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    currentMesh.position.sub(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
+
+    camera.position.set(0, -dist * 0.5, dist);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  };
+  reader.readAsArrayBuffer(blob);
+}
+</script>
+</body>
+</html>

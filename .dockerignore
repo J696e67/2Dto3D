@@ -1,0 +1,14 @@
+frontend/
+node_modules/
+.git/
+.gitignore
+*.stl
+*.png
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+pyproject.toml
+resume.txt
+templates/

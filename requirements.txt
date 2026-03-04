@@ -1,6 +1,7 @@
-numpy>=1.24
-opencv-python>=4.8
-numpy-stl>=3.0
-matplotlib>=3.7   # optional, only needed for --preview
 flask>=3.0
+flask-cors>=4.0
+gunicorn>=21.2
+numpy>=1.24
+opencv-python-headless>=4.8
+numpy-stl>=3.0
 mapbox-earcut>=0.12

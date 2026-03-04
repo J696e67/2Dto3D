@@ -15,6 +15,7 @@ from io import BytesIO
 import cv2
 
 from flask import Flask, render_template, request, send_file, jsonify
+from flask_cors import CORS
 
 from sketch2stl import (
     load_and_preprocess,
@@ -26,11 +27,17 @@ from sketch2stl import (
 )
 
 app = Flask(__name__)
+CORS(app)
 
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 
 @app.route("/convert", methods=["POST"])
@@ -182,4 +189,4 @@ def convert():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5001)
