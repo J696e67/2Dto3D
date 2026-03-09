@@ -2,334 +2,521 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>sketch2stl — Draw &amp; Convert to 3D</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #1A1410;
+    --container: #2A2118;
+    --border: #3D3228;
+    --accent: #D4A574;
+    --accent-dark: #B88A5E;
+    --text-pri: #F5F1ED;
+    --text-sec: #CAB8A8;
+    --text-mut: #8B7D73;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --nav-h: 44px;
+    --tab-h: 50px;
+  }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #1a1a2e; color: #e0e0e0;
-    min-height: 100vh;
-    /* iOS safe areas */
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-    -webkit-user-select: none;
-    user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text-pri);
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  header {
-    background: #16213e; padding: 48px 24px 12px;
-    border-bottom: 1px solid #0f3460;
-    display: flex; align-items: center; gap: 16px;
-  }
-  header h1 { font-size: 1.3rem; color: #e94560; }
-  header span { font-size: 0.85rem; color: #888; }
 
-  .main { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
-
-  /* --- Canvas area --- */
-  .canvas-area { flex: 1; min-width: 0; }
-  .toolbar {
-    display: flex; gap: 8px; align-items: center;
-    margin-bottom: 8px; flex-wrap: wrap;
+  /* ── App Shell ─────────────────────────────────────── */
+  .app {
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh;
   }
-  .toolbar button, .toolbar label {
-    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
-    padding: 6px 14px; border-radius: 6px; cursor: pointer;
-    font-size: 0.82rem; transition: background 0.15s;
-  }
-  .toolbar button:not(.color-swatch):hover { background: #1a4a80; }
-  .toolbar button.active:not(.color-swatch) { background: #e94560; border-color: #e94560; }
-  .toolbar input[type="range"] { width: 80px; vertical-align: middle; }
-  .toolbar .sep { width: 1px; height: 24px; background: #333; }
-  .toolbar input[type="file"] { display: none; }
 
-  .color-swatch {
-    width: 32px; height: 32px; border-radius: 6px;
-    border: 2px solid #555; cursor: pointer;
+  /* ── Nav Bar ───────────────────────────────────────── */
+  .nav-bar {
+    background: var(--container);
+    border-bottom: 1px solid var(--border);
+    padding-top: var(--safe-top);
+    flex-shrink: 0;
+  }
+  .nav-bar-inner {
+    height: var(--nav-h);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .nav-title {
+    font-size: 17px; font-weight: 700; color: var(--text-pri);
+  }
+
+  /* ── Tab Panels ────────────────────────────────────── */
+  .tab-content {
+    flex: 1; min-height: 0;
+    position: relative;
+  }
+  .tab-panel {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column;
+    overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-panel.active { display: flex; }
+
+  /* ── Tab Bar ───────────────────────────────────────── */
+  .tab-bar {
+    background: var(--container);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding-bottom: var(--safe-bottom);
+    flex-shrink: 0;
+  }
+  .tab-bar-btn {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2px; padding: 6px 0 4px;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-mut);
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab-bar-btn.active { color: var(--accent); }
+  .tab-bar-btn svg { width: 24px; height: 24px; fill: currentColor; }
+  .tab-bar-btn span { font-size: 10px; font-weight: 500; }
+
+  /* ── DRAW TAB ──────────────────────────────────────── */
+  #drawPanel { padding: 12px 16px 16px; gap: 12px; }
+
+  /* Segmented Control */
+  .segmented {
+    display: flex; background: var(--bg); border-radius: 8px;
+    padding: 2px; gap: 2px;
+  }
+  .segmented button {
+    flex: 1; padding: 8px 0; border: none; border-radius: 7px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--text-sec);
+    transition: all 0.2s;
+  }
+  .segmented button.active {
+    background: var(--accent); color: #fff;
+  }
+
+  /* Color Palette */
+  .palette-row {
+    display: flex; justify-content: center; gap: 16px;
+  }
+  .palette-item {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: none; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .palette-circle {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 2.5px solid transparent;
     transition: border-color 0.15s, box-shadow 0.15s;
-    padding: 0; background: none;
   }
-  .color-swatch:hover { border-color: #aaa; }
-  .color-swatch.active {
-    border-color: #fff;
-    box-shadow: 0 0 0 2px #e94560;
+  .palette-item.active .palette-circle {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .palette-label { font-size: 11px; color: var(--text-sec); }
+
+  /* Brush Size */
+  .brush-size-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 4px;
+  }
+  .brush-size-row label { font-size: 13px; color: var(--text-sec); white-space: nowrap; }
+  .brush-size-row input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
+  .brush-size-row .size-val {
+    font-size: 14px; font-weight: 600; color: var(--accent);
+    min-width: 20px; text-align: right;
   }
 
-  .color-height-row {
-    display: flex; align-items: center; gap: 6px;
+  /* Canvas */
+  .canvas-wrap {
+    flex: 1; min-height: 0; display: flex;
+    align-items: center; justify-content: center;
   }
-  .color-height-row .color-dot {
-    width: 14px; height: 14px; border-radius: 50%;
-    flex-shrink: 0; border: 1px solid #555;
-  }
-  .color-height-row input[type="range"] { flex: 1; min-width: 0; }
-  .color-height-row .color-height-val {
-    font-size: 0.75rem; color: #e94560; font-weight: 600;
-    width: 32px; text-align: right; flex-shrink: 0;
-  }
-
   canvas#drawCanvas {
-    border: 2px solid #0f3460; border-radius: 8px;
+    background: #fff; border-radius: 10px;
     cursor: crosshair; display: block;
-    background: #fff; touch-action: none;
-    max-width: 100%; height: auto;
+    touch-action: none;
+    max-width: 100%; max-height: 100%;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
   }
 
-  /* --- Sidebar --- */
-  .sidebar {
-    width: 260px; background: #16213e; border-radius: 8px;
-    padding: 16px; display: flex; flex-direction: column; gap: 12px;
-    border: 1px solid #0f3460;
+  /* Action Buttons */
+  .action-row {
+    display: flex; gap: 10px;
   }
-  .sidebar h3 { font-size: 0.95rem; color: #e94560; margin-bottom: 4px; }
-  .param { display: flex; flex-direction: column; gap: 2px; }
-  .param label {
-    font-size: 0.78rem; color: #aaa;
-    display: flex; justify-content: space-between;
+  .action-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 12px 0; border-radius: 10px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+    min-height: 48px;
   }
-  .param label span { color: #e94560; font-weight: 600; }
-  .param input[type="range"], .param select {
-    width: 100%; accent-color: #e94560;
+  .action-btn.outline {
+    background: var(--container); color: var(--text-pri);
+    border: 1px solid var(--border);
   }
-  .param select {
-    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
-    padding: 4px; border-radius: 4px;
+  .action-btn.outline:active { background: var(--border); }
+  .action-btn.primary {
+    background: var(--accent); color: #fff; border: none;
+  }
+  .action-btn.primary:active { background: var(--accent-dark); }
+  .action-btn svg { width: 18px; height: 18px; fill: currentColor; }
+  input[type="file"] { display: none; }
+
+  /* ── SETTINGS TAB ──────────────────────────────────── */
+  #settingsPanel { padding: 0 0 0; }
+
+  .settings-scroll {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px 16px 100px;
+    display: flex; flex-direction: column; gap: 20px;
   }
 
-  .checkbox-param {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 0.82rem; color: #aaa;
+  .section-header {
+    font-size: 13px; font-weight: 700; color: var(--text-sec);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 0 4px; margin-bottom: -8px;
   }
-  .checkbox-param input { accent-color: #e94560; }
 
+  .card {
+    background: var(--container); border-radius: 12px;
+    border: 1px solid var(--border); overflow: hidden;
+  }
+  .card-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; min-height: 52px;
+  }
+  .card-row + .card-row { border-top: 1px solid var(--border); }
+
+  .card-row .color-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .card-row .row-label {
+    font-size: 15px; color: var(--text-pri);
+    min-width: 60px; flex-shrink: 0;
+  }
+  .card-row input[type="range"] {
+    flex: 1; accent-color: var(--accent); min-width: 0;
+    height: 44px;
+  }
+  .card-row .row-val {
+    font-size: 14px; font-weight: 600; color: var(--accent);
+    min-width: 48px; text-align: right; flex-shrink: 0;
+  }
+
+  /* Toggle Switch */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; min-height: 52px;
+  }
+  .toggle-row .row-label { font-size: 15px; color: var(--text-pri); }
+  .toggle-switch {
+    position: relative; width: 51px; height: 31px; flex-shrink: 0;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0; cursor: pointer;
+    background: #3a3a3c; border-radius: 31px;
+    transition: background 0.2s;
+  }
+  .toggle-slider::before {
+    content: ''; position: absolute;
+    width: 27px; height: 27px; left: 2px; bottom: 2px;
+    background: #fff; border-radius: 50%;
+    transition: transform 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: #34c759; }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+  /* Sticky Convert Button */
+  .sticky-convert {
+    position: sticky; bottom: 0; left: 0; right: 0;
+    padding: 12px 16px;
+    padding-bottom: calc(12px);
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+  }
   #convertBtn {
-    background: #e94560; color: #fff; border: none;
-    padding: 12px; border-radius: 8px; font-size: 1rem;
-    cursor: pointer; font-weight: 600; transition: background 0.15s;
+    width: 100%; padding: 16px; border: none; border-radius: 12px;
+    background: var(--accent); color: #fff;
+    font-size: 17px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+    min-height: 52px;
   }
-  #convertBtn:hover { background: #c73650; }
-  #convertBtn:disabled { background: #555; cursor: wait; }
-
-  #downloadBtn {
-    background: #0f3460; color: #e0e0e0; border: 1px solid #1a3a6a;
-    padding: 10px; border-radius: 8px; font-size: 0.9rem;
-    cursor: pointer; text-align: center; display: none;
-    text-decoration: none; font-weight: 500;
-  }
-  #downloadBtn:hover { background: #1a4a80; }
-
+  #convertBtn:active { background: var(--accent-dark); }
+  #convertBtn:disabled { background: #444; cursor: wait; opacity: 0.7; }
   #statusMsg {
-    font-size: 0.82rem; color: #aaa; min-height: 1.2em;
+    font-size: 13px; color: var(--text-sec); text-align: center;
+    margin-top: 6px; min-height: 1.2em;
   }
-  #statusMsg.error { color: #e94560; }
+  #statusMsg.error { color: var(--accent); }
   #statusMsg.warning {
     color: #f0a500; background: rgba(240,165,0,0.1);
-    border: 1px solid rgba(240,165,0,0.3); border-radius: 6px;
+    border: 1px solid rgba(240,165,0,0.3); border-radius: 8px;
     padding: 8px; line-height: 1.4;
   }
 
-  /* --- 3D Preview --- */
-  .preview-section {
-    width: 100%; padding: 0 16px 16px;
-  }
-  .preview-section h3 {
-    font-size: 0.95rem; color: #e94560; margin-bottom: 8px;
+  /* ── PREVIEW TAB ───────────────────────────────────── */
+  #previewPanel { padding: 0; }
+
+  .preview-viewer {
+    flex: 1; min-height: 0; position: relative;
   }
   #preview3d {
-    width: 100%; height: 400px; background: #111;
-    border: 2px solid #0f3460; border-radius: 8px;
-    display: none;
+    width: 100%; height: 100%; background: var(--bg);
   }
-
-  /* --- Tablet breakpoint --- */
-  @media (min-width: 768px) and (max-width: 1024px) {
-    .sidebar { width: 220px; }
-    .toolbar button, .toolbar label {
-      min-height: 40px;
-    }
+  .preview-empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 12px; color: var(--text-mut);
   }
+  .preview-empty svg { width: 64px; height: 64px; fill: var(--text-mut); opacity: 0.4; }
+  .preview-empty p { font-size: 15px; text-align: center; line-height: 1.5; }
 
-  /* --- Mobile breakpoint --- */
-  @media (max-width: 767px) {
-    header {
-      flex-direction: column; align-items: flex-start;
-      padding: 48px 16px 10px; gap: 4px;
-    }
-    header h1 { font-size: 1.1rem; }
-    header span { font-size: 0.78rem; }
+  .preview-status-chip {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(52,199,89,0.2); color: #34c759;
+    font-size: 12px; font-weight: 600; padding: 4px 12px;
+    border-radius: 20px; display: none;
+  }
+  .preview-status-chip.visible { display: block; }
 
-    .main {
-      flex-direction: column;
-      padding: 10px;
-      gap: 12px;
-    }
+  .preview-actions {
+    display: flex; gap: 10px; padding: 12px 16px;
+    background: var(--container);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .preview-actions .action-btn { flex: 1; }
 
-    .sidebar {
-      width: 100%;
-      padding: 12px;
-    }
-
-    .toolbar button, .toolbar label {
-      min-height: 36px;
-      padding: 6px 12px;
-      font-size: 0.85rem;
-    }
-    .toolbar .color-swatch {
-      width: 36px; height: 36px;
-    }
-    .toolbar input[type="range"] {
-      min-height: 44px;
-    }
-
-    .param input[type="range"], .param select {
-      min-height: 44px;
-    }
-
-    .checkbox-param {
-      min-height: 44px;
-      align-items: center;
-    }
-    .checkbox-param input {
-      width: 20px; height: 20px;
-    }
-
-    #convertBtn {
-      min-height: 48px;
-      width: 100%;
-      font-size: 1.05rem;
-    }
-    #downloadBtn {
-      min-height: 48px;
-      width: 100%;
-      font-size: 0.95rem;
-      display: none;
-    }
-
-    #preview3d {
-      height: 300px;
-    }
-
-    .preview-section {
-      padding: 0 10px 10px;
-    }
+  /* ── Desktop: keep it centered ─────────────────────── */
+  @media (min-width: 500px) {
+    .app { max-width: 430px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>sketch2stl</h1>
-  <span>Draw a sketch or upload an image, then convert to a 3D printable STL</span>
-</header>
-
-<div class="main">
-  <!-- Canvas Area -->
-  <div class="canvas-area">
-    <div class="toolbar">
-      <button id="brushBtn" class="active" title="Brush">Brush</button>
-      <button id="eraserBtn" title="Eraser">Eraser</button>
-      <div class="sep"></div>
-      <button class="color-swatch active" data-color="#000000" style="background:#000000;" title="Black"></button>
-      <button class="color-swatch" data-color="#E94560" style="background:#E94560;" title="Red"></button>
-      <button class="color-swatch" data-color="#3498DB" style="background:#3498DB;" title="Blue"></button>
-      <button class="color-swatch" data-color="#2ECC71" style="background:#2ECC71;" title="Green"></button>
-      <button class="color-swatch" data-color="#F39C12" style="background:#F39C12;" title="Orange"></button>
-      <div class="sep"></div>
-      <label>Size: <input type="range" id="brushSize" min="2" max="30" value="4"></label>
-      <div class="sep"></div>
-      <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
-      <button id="clearBtn" title="Clear canvas">Clear</button>
-      <div class="sep"></div>
-      <label class="toolbar button" style="cursor:pointer; background:#0f3460; border:1px solid #1a3a6a; padding:6px 14px; border-radius:6px;">
-        Upload Image
-        <input type="file" id="uploadInput" accept="image/*">
-      </label>
+<div class="app">
+  <!-- Nav Bar -->
+  <div class="nav-bar">
+    <div class="nav-bar-inner">
+      <div class="nav-title" id="navTitle">sketch2stl</div>
     </div>
-    <canvas id="drawCanvas" width="800" height="600"></canvas>
   </div>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <h3>Color Heights (mm)</h3>
+  <!-- Tab Content -->
+  <div class="tab-content">
 
-    <div class="color-height-row">
-      <div class="color-dot" style="background:#000000;"></div>
-      <input type="range" id="height_000000" min="0.5" max="30" step="0.5" value="5">
-      <span class="color-height-val" id="valHeight_000000">5.0</span>
-    </div>
-    <div class="color-height-row">
-      <div class="color-dot" style="background:#E94560;"></div>
-      <input type="range" id="height_E94560" min="0.5" max="30" step="0.5" value="5">
-      <span class="color-height-val" id="valHeight_E94560">5.0</span>
-    </div>
-    <div class="color-height-row">
-      <div class="color-dot" style="background:#3498DB;"></div>
-      <input type="range" id="height_3498DB" min="0.5" max="30" step="0.5" value="5">
-      <span class="color-height-val" id="valHeight_3498DB">5.0</span>
-    </div>
-    <div class="color-height-row">
-      <div class="color-dot" style="background:#2ECC71;"></div>
-      <input type="range" id="height_2ECC71" min="0.5" max="30" step="0.5" value="5">
-      <span class="color-height-val" id="valHeight_2ECC71">5.0</span>
-    </div>
-    <div class="color-height-row">
-      <div class="color-dot" style="background:#F39C12;"></div>
-      <input type="range" id="height_F39C12" min="0.5" max="30" step="0.5" value="5">
-      <span class="color-height-val" id="valHeight_F39C12">5.0</span>
+    <!-- ═══ DRAW TAB ═══ -->
+    <div class="tab-panel active" id="drawPanel">
+      <!-- Segmented Control -->
+      <div class="segmented">
+        <button id="brushBtn" class="active">Brush</button>
+        <button id="eraserBtn">Eraser</button>
+      </div>
+
+      <!-- Color Palette -->
+      <div class="palette-row">
+        <button class="palette-item active" data-color="#000000">
+          <div class="palette-circle" style="background:#000000;"></div>
+          <span class="palette-label">Black</span>
+        </button>
+        <button class="palette-item" data-color="#E94560">
+          <div class="palette-circle" style="background:#E94560;"></div>
+          <span class="palette-label">Red</span>
+        </button>
+        <button class="palette-item" data-color="#3498DB">
+          <div class="palette-circle" style="background:#3498DB;"></div>
+          <span class="palette-label">Blue</span>
+        </button>
+        <button class="palette-item" data-color="#2ECC71">
+          <div class="palette-circle" style="background:#2ECC71;"></div>
+          <span class="palette-label">Green</span>
+        </button>
+        <button class="palette-item" data-color="#F39C12">
+          <div class="palette-circle" style="background:#F39C12;"></div>
+          <span class="palette-label">Orange</span>
+        </button>
+      </div>
+
+      <!-- Brush Size -->
+      <div class="brush-size-row">
+        <label>Brush Size</label>
+        <input type="range" id="brushSize" min="2" max="30" value="4">
+        <span class="size-val" id="brushSizeVal">4</span>
+      </div>
+
+      <!-- Canvas -->
+      <div class="canvas-wrap">
+        <canvas id="drawCanvas" width="800" height="600"></canvas>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-row">
+        <button class="action-btn outline" id="undoBtn">
+          <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05 1.04-6.83 2.73L3 8v8h8l-2.81-2.81C9.83 11.83 11.06 11 12.5 11c2.33 0 4.31 1.46 5.11 3.5l2.39-.96C18.79 10.45 15.86 8 12.5 8z"/></svg>
+          Undo
+        </button>
+        <button class="action-btn outline" id="clearBtn">
+          <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          Clear
+        </button>
+        <label class="action-btn primary" id="uploadLabel">
+          <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+          Upload
+          <input type="file" id="uploadInput" accept="image/*">
+        </label>
+      </div>
     </div>
 
-    <h3 style="margin-top:8px;">Parameters</h3>
-    <div class="param">
-      <label>Base Thickness (mm) <span id="valBase">2.0</span></label>
-      <input type="range" id="baseThickness" min="0" max="10" step="0.5" value="2">
-    </div>
-    <div class="param">
-      <label>Scale (mm/px) <span id="valScale">0.10</span></label>
-      <input type="range" id="scale" min="0.01" max="1" step="0.01" value="0.1">
-    </div>
-    <div class="param">
-      <label>Upsample <span id="valUpsample">2</span></label>
-      <input type="range" id="upsample" min="1" max="4" step="1" value="2">
-    </div>
-    <div class="param">
-      <label>Blur Radius <span id="valBlur">5</span></label>
-      <input type="range" id="blurRadius" min="1" max="15" step="2" value="5">
-    </div>
-    <div class="param">
-      <label>Min Area (px²) <span id="valArea">200</span></label>
-      <input type="range" id="minArea" min="10" max="2000" step="10" value="200">
-    </div>
-    <div class="param">
-      <label>Base Margin (mm) <span id="valMargin">2.0</span></label>
-      <input type="range" id="baseMargin" min="0" max="10" step="0.5" value="2">
+    <!-- ═══ SETTINGS TAB ═══ -->
+    <div class="tab-panel" id="settingsPanel">
+      <div class="settings-scroll">
+        <!-- Extrusion Heights -->
+        <div class="section-header">Extrusion Heights</div>
+        <div class="card">
+          <div class="card-row">
+            <div class="color-dot" style="background:#000000;"></div>
+            <span class="row-label">Black</span>
+            <input type="range" id="height_000000" min="0.5" max="30" step="0.5" value="5">
+            <span class="row-val" id="valHeight_000000">5.0mm</span>
+          </div>
+          <div class="card-row">
+            <div class="color-dot" style="background:#E94560;"></div>
+            <span class="row-label">Red</span>
+            <input type="range" id="height_E94560" min="0.5" max="30" step="0.5" value="5">
+            <span class="row-val" id="valHeight_E94560">5.0mm</span>
+          </div>
+          <div class="card-row">
+            <div class="color-dot" style="background:#3498DB;"></div>
+            <span class="row-label">Blue</span>
+            <input type="range" id="height_3498DB" min="0.5" max="30" step="0.5" value="5">
+            <span class="row-val" id="valHeight_3498DB">5.0mm</span>
+          </div>
+          <div class="card-row">
+            <div class="color-dot" style="background:#2ECC71;"></div>
+            <span class="row-label">Green</span>
+            <input type="range" id="height_2ECC71" min="0.5" max="30" step="0.5" value="5">
+            <span class="row-val" id="valHeight_2ECC71">5.0mm</span>
+          </div>
+          <div class="card-row">
+            <div class="color-dot" style="background:#F39C12;"></div>
+            <span class="row-label">Orange</span>
+            <input type="range" id="height_F39C12" min="0.5" max="30" step="0.5" value="5">
+            <span class="row-val" id="valHeight_F39C12">5.0mm</span>
+          </div>
+        </div>
+
+        <!-- Parameters -->
+        <div class="section-header">Parameters</div>
+        <div class="card">
+          <div class="card-row">
+            <span class="row-label">Base Thickness</span>
+            <input type="range" id="baseThickness" min="0" max="10" step="0.5" value="2">
+            <span class="row-val" id="valBase">2.0mm</span>
+          </div>
+          <div class="card-row">
+            <span class="row-label">Scale</span>
+            <input type="range" id="scale" min="0.01" max="1" step="0.01" value="0.1">
+            <span class="row-val" id="valScale">0.10</span>
+          </div>
+          <div class="card-row">
+            <span class="row-label">Upsample</span>
+            <input type="range" id="upsample" min="1" max="4" step="1" value="2">
+            <span class="row-val" id="valUpsample">2</span>
+          </div>
+          <div class="card-row">
+            <span class="row-label">Blur Radius</span>
+            <input type="range" id="blurRadius" min="1" max="15" step="2" value="5">
+            <span class="row-val" id="valBlur">5</span>
+          </div>
+          <div class="card-row">
+            <span class="row-label">Min Area</span>
+            <input type="range" id="minArea" min="10" max="2000" step="10" value="200">
+            <span class="row-val" id="valArea">200</span>
+          </div>
+          <div class="card-row">
+            <span class="row-label">Base Margin</span>
+            <input type="range" id="baseMargin" min="0" max="10" step="0.5" value="2">
+            <span class="row-val" id="valMargin">2.0mm</span>
+          </div>
+        </div>
+
+        <input type="checkbox" id="invertCheck" style="display:none;">
+      </div>
+
+      <!-- Sticky Convert -->
+      <div class="sticky-convert">
+        <button id="convertBtn" disabled>Loading OpenCV...</button>
+        <div id="statusMsg"></div>
+      </div>
     </div>
 
-    <div class="checkbox-param">
-      <input type="checkbox" id="invertCheck">
-      <label for="invertCheck">Invert (dark background)</label>
+    <!-- ═══ PREVIEW TAB ═══ -->
+    <div class="tab-panel" id="previewPanel">
+      <div class="preview-viewer">
+        <div id="preview3d">
+          <div class="preview-empty" id="previewEmpty">
+            <svg viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.991.991 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.37v-6.73L5 9.18v6.73zm14 0v-6.73l-6 3.37v6.73l6-3.37z"/></svg>
+            <p>No 3D preview yet.<br>Draw something and convert it on the Convert tab.</p>
+          </div>
+        </div>
+        <div class="preview-status-chip" id="previewChip">Ready</div>
+      </div>
+      <div class="preview-actions">
+        <button class="action-btn primary" id="downloadBtn" style="display:none;">
+          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          Download STL
+        </button>
+        <button class="action-btn outline" id="editDrawingBtn">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          Edit Drawing
+        </button>
+      </div>
     </div>
+  </div>
 
-    <button id="convertBtn">Convert to STL</button>
-    <button id="downloadBtn" style="display:none;">Download / Share STL</button>
-    <div id="statusMsg"></div>
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-bar-btn active" data-tab="drawPanel">
+      <svg viewBox="0 0 24 24"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 00-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 000-1.41z"/></svg>
+      <span>Draw</span>
+    </button>
+    <button class="tab-bar-btn" data-tab="settingsPanel">
+      <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      <span>Convert</span>
+    </button>
+    <button class="tab-bar-btn" data-tab="previewPanel">
+      <svg viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.991.991 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.37v-6.73L5 9.18v6.73zm14 0v-6.73l-6 3.37v6.73l6-3.37z"/></svg>
+      <span>Preview</span>
+    </button>
   </div>
 </div>
 
-<!-- 3D Preview -->
-<div class="preview-section">
-  <h3>3D Preview</h3>
-  <div id="preview3d"></div>
-</div>
+<!-- OpenCV.js — bundled locally for fully offline operation -->
+<script async src="vendor/opencv.js" onload="window._cvReady?.()" id="opencvScript"></script>
 
-<!-- Three.js via importmap -->
+<!-- earcut — polygon triangulation with holes (bundled locally) -->
+<script src="vendor/earcut.min.js"></script>
+
+<!-- Three.js via importmap (bundled locally) -->
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
   }
 }
 </script>
@@ -338,18 +525,83 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { convertCanvasToSTL, NotEnclosedError } from './js/converter.js';
 
-// ========== API Configuration ==========
-// Change this to your deployed backend URL for production
-// e.g. 'https://sketch2stl-api.fly.dev'
-const API_BASE_URL = window.SKETCH2STL_API_URL || 'http://192.168.68.20:5001';
+// ========== Tab Navigation ==========
+const tabBtns = document.querySelectorAll('.tab-bar-btn');
+const tabPanels = document.querySelectorAll('.tab-panel');
+const navTitle = document.getElementById('navTitle');
+
+const tabTitles = {
+  drawPanel: 'sketch2stl',
+  settingsPanel: 'Convert',
+  previewPanel: '3D Preview',
+};
+
+function switchTab(tabId) {
+  tabPanels.forEach(p => p.classList.remove('active'));
+  tabBtns.forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  document.querySelector(`.tab-bar-btn[data-tab="${tabId}"]`).classList.add('active');
+  navTitle.textContent = tabTitles[tabId] || 'sketch2stl';
+
+  // Resize 3D renderer when switching to preview
+  if (tabId === 'previewPanel' && renderer) {
+    requestAnimationFrame(() => resize3D());
+  }
+}
+
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// "Edit Drawing" button on preview tab
+document.getElementById('editDrawingBtn').addEventListener('click', () => {
+  switchTab('drawPanel');
+});
+
+// ========== OpenCV.js Loading ==========
+let cvReady = false;
+function waitForOpenCV() {
+  return new Promise((resolve) => {
+    if (typeof cv !== 'undefined' && cv.Mat) {
+      cvReady = true;
+      resolve();
+      return;
+    }
+    window._cvReady = () => {
+      if (typeof cv !== 'undefined' && typeof cv.then === 'function') {
+        cv.then((readyCv) => {
+          window.cv = readyCv;
+          cvReady = true;
+          resolve();
+        });
+      } else if (typeof cv !== 'undefined') {
+        const check = () => {
+          if (cv.Mat) { cvReady = true; resolve(); }
+          else setTimeout(check, 50);
+        };
+        check();
+      }
+    };
+    if (typeof cv !== 'undefined') {
+      window._cvReady();
+    }
+  });
+}
+
+const cvPromise = waitForOpenCV();
+cvPromise.then(() => {
+  document.getElementById('convertBtn').disabled = false;
+  document.getElementById('convertBtn').textContent = 'Convert to STL';
+});
 
 // ========== Drawing Canvas ==========
 const canvas = document.getElementById('drawCanvas');
 const ctx = canvas.getContext('2d');
 
 let drawing = false;
-let tool = 'brush'; // 'brush' | 'eraser'
+let tool = 'brush';
 let activeColor = '#000000';
 const undoStack = [];
 const MAX_UNDO = 20;
@@ -362,7 +614,6 @@ const PALETTE = [
   { name: 'Orange', hex: '#F39C12' },
 ];
 
-// Init white background
 function clearCanvas() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -376,8 +627,8 @@ function pushUndo() {
 }
 
 function popUndo() {
-  if (undoStack.length <= 1) return; // keep at least the blank state
-  undoStack.pop(); // discard current
+  if (undoStack.length <= 1) return;
+  undoStack.pop();
   const prev = undoStack[undoStack.length - 1];
   ctx.putImageData(prev, 0, 0);
 }
@@ -431,19 +682,16 @@ function endDraw(e) {
   pushUndo();
 }
 
-// Mouse events
 canvas.addEventListener('mousedown', startDraw);
 canvas.addEventListener('mousemove', moveDraw);
 canvas.addEventListener('mouseup', endDraw);
 canvas.addEventListener('mouseleave', endDraw);
-
-// Touch events
 canvas.addEventListener('touchstart', startDraw, { passive: false });
 canvas.addEventListener('touchmove', moveDraw, { passive: false });
 canvas.addEventListener('touchend', endDraw);
 canvas.addEventListener('touchcancel', endDraw);
 
-// --- Toolbar ---
+// --- Segmented Control (Brush / Eraser) ---
 const brushBtn = document.getElementById('brushBtn');
 const eraserBtn = document.getElementById('eraserBtn');
 
@@ -460,14 +708,13 @@ eraserBtn.addEventListener('click', () => {
   canvas.style.cursor = 'cell';
 });
 
-// --- Color swatches ---
-const swatches = document.querySelectorAll('.color-swatch');
-swatches.forEach(swatch => {
-  swatch.addEventListener('click', () => {
-    activeColor = swatch.dataset.color;
-    swatches.forEach(s => s.classList.remove('active'));
-    swatch.classList.add('active');
-    // Switch to brush tool when picking a color
+// --- Color Palette ---
+const paletteItems = document.querySelectorAll('.palette-item');
+paletteItems.forEach(item => {
+  item.addEventListener('click', () => {
+    activeColor = item.dataset.color;
+    paletteItems.forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
     tool = 'brush';
     brushBtn.classList.add('active');
     eraserBtn.classList.remove('active');
@@ -475,13 +722,20 @@ swatches.forEach(swatch => {
   });
 });
 
+// --- Brush Size ---
+const brushSizeInput = document.getElementById('brushSize');
+const brushSizeVal = document.getElementById('brushSizeVal');
+brushSizeInput.addEventListener('input', () => {
+  brushSizeVal.textContent = brushSizeInput.value;
+});
+
+// --- Canvas Actions ---
 document.getElementById('clearBtn').addEventListener('click', () => {
   clearCanvas();
   pushUndo();
 });
 document.getElementById('undoBtn').addEventListener('click', popUndo);
 
-// Ctrl+Z / Cmd+Z
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
     e.preventDefault();
@@ -498,7 +752,6 @@ document.getElementById('uploadInput').addEventListener('change', (e) => {
     const img = new Image();
     img.onload = () => {
       clearCanvas();
-      // Scale to fit while maintaining aspect ratio
       const cw = canvas.width, ch = canvas.height;
       const iw = img.width, ih = img.height;
       const ratio = Math.min(cw / iw, ch / ih);
@@ -514,12 +767,12 @@ document.getElementById('uploadInput').addEventListener('change', (e) => {
 
 // --- Slider value labels ---
 const sliders = [
-  ['baseThickness', 'valBase',   v => parseFloat(v).toFixed(1)],
+  ['baseThickness', 'valBase',   v => parseFloat(v).toFixed(1) + 'mm'],
   ['scale',         'valScale',  v => parseFloat(v).toFixed(2)],
   ['upsample',      'valUpsample', v => v],
   ['blurRadius',    'valBlur',   v => v],
   ['minArea',       'valArea',   v => v],
-  ['baseMargin',    'valMargin', v => parseFloat(v).toFixed(1)],
+  ['baseMargin',    'valMargin', v => parseFloat(v).toFixed(1) + 'mm'],
 ];
 for (const [id, labelId, fmt] of sliders) {
   const input = document.getElementById(id);
@@ -533,7 +786,7 @@ for (const cid of colorHeightIds) {
   const input = document.getElementById('height_' + cid);
   const label = document.getElementById('valHeight_' + cid);
   input.addEventListener('input', () => {
-    label.textContent = parseFloat(input.value).toFixed(1);
+    label.textContent = parseFloat(input.value).toFixed(1) + 'mm';
   });
 }
 
@@ -541,21 +794,21 @@ for (const cid of colorHeightIds) {
 const convertBtn = document.getElementById('convertBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const statusMsg = document.getElementById('statusMsg');
+const previewChip = document.getElementById('previewChip');
+const previewEmpty = document.getElementById('previewEmpty');
 
 let lastSTLBlob = null;
 
 async function saveOrShareSTL(blob) {
   const file = new File([blob], 'sketch.stl', { type: 'application/octet-stream' });
-  // Try native share (works on iOS)
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'sketch.stl' });
       return;
     } catch (e) {
-      if (e.name === 'AbortError') return; // user cancelled
+      if (e.name === 'AbortError') return;
     }
   }
-  // Fallback: regular download for desktop browsers
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -565,61 +818,61 @@ async function saveOrShareSTL(blob) {
 }
 
 convertBtn.addEventListener('click', async () => {
+  if (!cvReady) {
+    statusMsg.textContent = 'OpenCV is still loading. Please wait...';
+    statusMsg.className = 'warning';
+    return;
+  }
+
   convertBtn.disabled = true;
-  statusMsg.textContent = 'Converting...';
+  statusMsg.textContent = 'Converting (on-device)...';
   statusMsg.className = '';
   downloadBtn.style.display = 'none';
 
-  const formData = new FormData();
-  formData.append('image_data', canvas.toDataURL('image/png'));
-  formData.append('base_thickness', document.getElementById('baseThickness').value);
-  formData.append('scale', document.getElementById('scale').value);
-  formData.append('upsample', document.getElementById('upsample').value);
-  formData.append('blur_radius', document.getElementById('blurRadius').value);
-  formData.append('min_area', document.getElementById('minArea').value);
-  formData.append('base_margin', document.getElementById('baseMargin').value);
-  formData.append('invert', document.getElementById('invertCheck').checked);
-
-  // Build per-color height map
   const colorHeights = {};
   for (const p of PALETTE) {
     const sliderId = 'height_' + p.hex.replace('#', '');
     colorHeights[p.hex] = parseFloat(document.getElementById(sliderId).value);
   }
-  formData.append('color_heights', JSON.stringify(colorHeights));
+
+  await new Promise(r => setTimeout(r, 50));
 
   try {
-    const resp = await fetch(API_BASE_URL + '/convert', { method: 'POST', body: formData });
-    if (!resp.ok) {
-      const err = await resp.json();
-      if (err.type === 'not_enclosed') {
-        statusMsg.textContent = err.error;
-        statusMsg.className = 'warning';
-        convertBtn.disabled = false;
-        return;
-      }
-      throw new Error(err.error || `Server error ${resp.status}`);
-    }
-    const blob = await resp.blob();
+    const stlBuffer = convertCanvasToSTL(canvas, {
+      colorHeights,
+      baseThickness: parseFloat(document.getElementById('baseThickness').value),
+      scale: parseFloat(document.getElementById('scale').value),
+      upsample: parseInt(document.getElementById('upsample').value, 10),
+      blurRadius: parseInt(document.getElementById('blurRadius').value, 10),
+      minArea: parseFloat(document.getElementById('minArea').value),
+      baseMargin: parseFloat(document.getElementById('baseMargin').value),
+      invert: document.getElementById('invertCheck').checked,
+    });
+
+    const blob = new Blob([stlBuffer], { type: 'application/octet-stream' });
     lastSTLBlob = blob;
 
-    // Show download button
-    downloadBtn.style.display = 'block';
+    downloadBtn.style.display = 'flex';
     downloadBtn.onclick = function() { saveOrShareSTL(blob); };
 
-    statusMsg.textContent = 'Conversion complete!';
+    statusMsg.textContent = 'Done! Switch to Preview tab to view.';
     statusMsg.className = '';
 
-    // 3D Preview
+    // Show 3D Preview
     show3DPreview(blob);
 
+    // Update preview tab state
+    previewChip.classList.add('visible');
+    previewEmpty.style.display = 'none';
+
   } catch (err) {
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      statusMsg.textContent = 'Cannot reach the conversion server. Please check your internet connection and try again.';
+    if (err instanceof NotEnclosedError || err.name === 'NotEnclosedError') {
+      statusMsg.textContent = err.message;
+      statusMsg.className = 'warning';
     } else {
       statusMsg.textContent = err.message;
+      statusMsg.className = 'error';
     }
-    statusMsg.className = 'error';
   } finally {
     convertBtn.disabled = false;
   }
@@ -628,18 +881,27 @@ convertBtn.addEventListener('click', async () => {
 // ========== 3D Preview ==========
 let scene, camera, renderer, controls, currentMesh;
 
+function resize3D() {
+  const container = document.getElementById('preview3d');
+  if (!renderer || !container) return;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+
 function init3D() {
   const container = document.getElementById('preview3d');
-  container.style.display = 'block';
 
   if (renderer) {
-    // Already initialized — just clear old mesh
     if (currentMesh) { scene.remove(currentMesh); currentMesh = null; }
     return;
   }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a2e);
+  scene.background = new THREE.Color(0x1A1410);
 
   camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 10000);
   camera.position.set(0, -50, 80);
@@ -653,7 +915,6 @@ function init3D() {
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
 
-  // Lights
   const ambient = new THREE.AmbientLight(0x404040, 1.5);
   scene.add(ambient);
   const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -670,14 +931,7 @@ function init3D() {
   }
   animate();
 
-  // Resize handler
-  window.addEventListener('resize', () => {
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-  });
+  window.addEventListener('resize', resize3D);
 }
 
 function show3DPreview(blob) {
@@ -690,7 +944,7 @@ function show3DPreview(blob) {
     geometry.computeVertexNormals();
 
     const material = new THREE.MeshPhongMaterial({
-      color: 0xe94560,
+      color: 0xD4A574,
       specular: 0x444444,
       shininess: 40,
       flatShading: false,
@@ -700,7 +954,6 @@ function show3DPreview(blob) {
     currentMesh = new THREE.Mesh(geometry, material);
     scene.add(currentMesh);
 
-    // Auto-center and zoom
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
     const center = new THREE.Vector3();

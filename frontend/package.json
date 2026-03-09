@@ -4,7 +4,7 @@
   "description": "Draw a sketch and convert it to a 3D printable STL file",
   "private": true,
   "scripts": {
-    "build": "cp index.html www/index.html",
+    "build": "cp index.html www/index.html && mkdir -p www/js && cp js/*.js www/js/ && cp -R vendor www/vendor",
     "cap:sync": "npm run build && npx cap sync ios",
     "cap:open": "npx cap open ios",
     "cap:run": "npm run build && npx cap run ios"
